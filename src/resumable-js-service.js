@@ -95,65 +95,69 @@ class ResumableJsService {
     // Post a chunk
     post(req) {
         return new Promise((resolve, reject) => {
-            var fields = req.payload;
-            var file = fields.file;
-
-            var chunkNumber = fields['resumableChunkNumber'];
-            var chunkSize = fields['resumableChunkSize'];
-            var totalSize = fields['resumableTotalSize'];
-            var identifier = this._cleanIdentifier(fields['resumableIdentifier']);
-            var filename = fields['resumableFilename'];
-
-            var originalFilename = fields['resumableIdentifier'];
-
-            if (! file || ! file.bytes) {
-                return reject('File missing');
-            }
-
-            if (! this._validateRequest(
-                    chunkNumber,
-                    chunkSize,
-                    totalSize,
-                    identifier,
-                    filename,
-                    file.bytes
-            )) {
-                return reject(this.getError());
-            }
-
-            var chunkFilename = this._getChunkFilename(chunkNumber, identifier);
-            return fs.rename(file.path, chunkFilename).then(() => {
-                // Do we have all the chunks?
-                var currentTestChunk = 1;
-                var numberOfChunks = Math.max(Math.floor(totalSize / (chunkSize * 1.0)), 1);
-                var testChunkExists = () => {
-                    return fs.exists(this._getChunkFilename(currentTestChunk, identifier)).then(exists => {
-                        if (exists) {
-                            currentTestChunk += 1;
-                            if (currentTestChunk>numberOfChunks) {
+            var fields =req.query;
+            var multiparty = require('multiparty');
+            var form = new multiparty.Form();
+            form.parse(req.payload, (err, formfields, files)=> {
+                var file = files.file[0];
+                file.bytes = file.size;
+                var chunkNumber = fields['resumableChunkNumber'];
+                var chunkSize = fields['resumableChunkSize'];
+                var totalSize = fields['resumableTotalSize'];
+                var identifier = this._cleanIdentifier(fields['resumableIdentifier'][0]);
+                var filename = fields['resumableFilename'];
+    
+                var originalFilename = fields['resumableIdentifier'];
+    
+                if (! file || ! file.bytes) {
+                    return reject('File missing');
+                }
+    
+                if (! this._validateRequest(
+                        chunkNumber,
+                        chunkSize,
+                        totalSize,
+                        identifier,
+                        filename,
+                        file.bytes
+                )) {
+                    return reject(this.getError());
+                }
+    
+                var chunkFilename = this._getChunkFilename(chunkNumber, identifier);
+                return fs.rename(file.path, chunkFilename).then(() => {
+                    // Do we have all the chunks?
+                    var currentTestChunk = 1;
+                    var numberOfChunks = Math.max(Math.floor(totalSize / (chunkSize * 1.0)), 1);
+                    var testChunkExists = () => {
+                        return fs.exists(this._getChunkFilename(currentTestChunk, identifier)).then(exists => {
+                            if (exists) {
+                                currentTestChunk += 1;
+                                if (currentTestChunk>numberOfChunks) {
+                                    resolve({
+                                        complete: true,
+                                        filename,
+                                        originalFilename,
+                                        identifier,
+                                    });
+                                } else {
+                                    // Recursion
+                                    return testChunkExists();
+                                }
+                            } else {
                                 resolve({
-                                    complete: true,
+                                    complete: false,
                                     filename,
                                     originalFilename,
                                     identifier,
                                 });
-                            } else {
-                                // Recursion
-                                return testChunkExists();
                             }
-                        } else {
-                            resolve({
-                                complete: false,
-                                filename,
-                                originalFilename,
-                                identifier,
-                            });
-                        }
-                    });
-                };
-                return testChunkExists();
-            }).catch(err => {
-                reject(err);
+                        });
+                    };
+                    return testChunkExists();
+                }).catch(err => {
+                    reject(err);
+                });
             });
         });
     }

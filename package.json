@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "eslint": "^2.9.0",
-    "q-io": "^1.13.2"
+    "q-io": "^1.13.2",
+    "multiparty":"^4.1.3"
   }
 }
